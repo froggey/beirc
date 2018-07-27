@@ -496,7 +496,7 @@
          (server (irc:server-name conn))
          (nickname (irc:nickname (irc:user conn)))
 	 (realname (irc:realname (irc:user conn))))
-    (with-output-as-presentation (t `(com-connect ,server :nick ,nickname :realname ,realname) 'command)
+    (with-output-as-presentation (t `(com-connect ,server :nick ,nickname ,@(when (and realname (not (equal realname ""))) `(:realname ,realname))) 'command)
       (with-drawing-options (*standard-output* :ink +grey12+ :text-size :small)
         (format-message* (format nil "Click here to reconnect to ~A as ~A" server nickname))))))
 

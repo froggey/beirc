@@ -3,7 +3,7 @@
 (defvar *hyperspec-base-url* "file://localhost/Users/dmurray/lisp/HyperSpec/")
 (defvar *default-fill-column* 80)
 (defvar *timestamp-column-orientation* :right)
-(defvar *default-nick* (format nil "Brucio-~d" (random 100)))
+(defvar *default-nick* (format nil "Mezz-~d" (random 100)))
 (defvar *default-realname* NIL
   "Either a string or NIL.")
 (defvar *default-web-browser* #+darwin "/usr/bin/open"
@@ -22,7 +22,7 @@ stdin, instead of from a file.")
 is a *default-sound-player* defined, this noise will be 
 played when your nick is mentioned.")
 
-(defvar *auto-join-alist* '(("irc.freenode.net" . ("#beirc")))
+(defvar *auto-join-alist* '(("irc.freenode.net" . ("#beirc" "#mezzano")))
   "An alist mapping irc server name to a list of channels to
   automatically join on connect. Each element should have this
   format:

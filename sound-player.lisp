@@ -73,6 +73,7 @@ program."
   
 (defun copy-to-stream (from-file to-stream)
   "Dump the contents of the file FROM-FILE into the stream TO-STREAM."
+  #+(or sbcl allegro)
   (with-open-file (from from-file)
     (cl-fad:copy-stream from to-stream)))
 

@@ -182,8 +182,9 @@
 (defmethod current-nickname (&optional (connection (current-connection *application-frame*)))
   (let ((user (when connection
                 (irc:user connection))))
-    (when user
-     (irc:nickname user))))
+    (if user
+        (irc:nickname user)
+        "")))
 
 (defvar *gui-process* nil)
 
@@ -194,9 +195,10 @@
       (decode-universal-time (get-universal-time))
     seconds
     (with-text-family (t :sans-serif)
-      (format t "~:[~;~2,'0D:~2,'0D    ~]~A~:[~;(away)~] ~@[on ~A~]~@[ speaking to ~A~]~100T~D messages"
-              (processes-supported-p) ; don't display time if threads are not supported
-              hours minutes
+      ;;(format t "~:[~;~2,'0D:~2,'0D    ~]~A~:[~;(away)~] ~@[on ~A~]~@[ speaking to ~A~]~100T~D messages"
+      ;;        (processes-supported-p) ; don't display time if threads are not supported
+      ;;        hours minutes
+      (format t "~A~:[~;(away)~] ~@[on ~A~]~@[ speaking to ~A~]~100T~D messages"
               (current-nickname)
               (away-status *application-frame* (current-connection *application-frame*))
               (current-channel)
@@ -305,18 +307,28 @@ finished."
   (let* ((syms '(*package* *trace-output*))
          (vals (mapcar #'symbol-value syms))
          (program (lambda ()
-                    (progv syms vals
-                      (let* ((frame (make-application-frame 'beirc))
-                             (ticker-process (when (processes-supported-p)
-                                               (clim-sys:make-process (lambda () (ticker frame))
-                                                                      :name "Beirc Ticker"))))
-                        (setf *beirc-frame* frame)
-			(when load-init-file
-			  (load-user-init-file))
-                        (run-frame-top-level frame)
-                        (when (processes-supported-p)
-                          (clim-sys:destroy-process ticker-process))
-                        (disconnect-all frame "Client Quit"))))))
+                    (let* ((*terminal-io* (make-instance 'mezzano.gui.popup-io-stream:popup-io-stream
+                                                         :title "beirc console"))
+                           (*standard-input* (make-synonym-stream '*terminal-io*))
+                           (*standard-output* (make-synonym-stream '*terminal-io*))
+                           (*error-output* (make-synonym-stream '*terminal-io*))
+                           (*trace-output* (make-synonym-stream '*terminal-io*))
+                           (*debug-io* (make-synonym-stream '*terminal-io*))
+                           (*query-io* (make-synonym-stream '*terminal-io*)))
+                      (progv syms vals
+                        (let* ((frame (make-application-frame 'beirc))
+                               #+(or)
+                               (ticker-process (when (processes-supported-p)
+                                                 (clim-sys:make-process (lambda () (ticker frame))
+                                                                        :name "Beirc Ticker"))))
+                          (setf *beirc-frame* frame)
+                          (when load-init-file
+                            (load-user-init-file))
+                          (run-frame-top-level frame)
+                          #+(or)
+                          (when (processes-supported-p)
+                            (clim-sys:destroy-process ticker-process))
+                          (disconnect-all frame "Client Quit")))))))
     ;; will start up a sound player, if you've configured one. [2006/04/06:rpg]
     (start-sound-server)
     (cond
@@ -661,7 +673,7 @@ not away."
   (disconnect-all *application-frame* reason)
   (frame-exit *application-frame*))
 
-(define-beirc-command (com-disconnect :name t) ((reason 'mumble :prompt "reason"))
+(define-beirc-command (com-disconnect :name t) (&key (reason 'mumble :prompt "reason" :default "Bye"))
   (when (current-connection *application-frame*)
     (disconnect (current-connection *application-frame*) *application-frame* reason)))
 
@@ -888,7 +900,7 @@ not away."
 (define-presentation-translator receiver-pane-to-receiver-translator
     (receiver-pane receiver beirc
        :documentation ((object stream)
-                       (format stream "Reiceiver: ~A"
+                       (format stream "Receiver: ~A"
                                (title (receiver-from-tab-page
                                        (sheet-to-page object))))))
     (object)
@@ -898,9 +910,11 @@ not away."
     (receiver-pane channel beirc
        :documentation ((object stream)
                        (format stream "Channel: ~A"
-                               (channel (sheet-to-page object))))
+                               (channel (receiver-from-tab-page (sheet-to-page object)))))
        :tester ((object)
-                (channel (receiver-from-tab-page (sheet-to-page object)))))
+                (let ((recv (receiver-from-tab-page (sheet-to-page object))))
+                  (and recv
+                       (channel recv)))))
     (object)
   (channel (sheet-to-page object)))
 
@@ -942,7 +956,10 @@ not away."
 (defun connection= (connection1 connection2)
   ;; TODO: should compare by network, not by server name.
   ;; TODO: also, there is no port that we could compare.
-  (and (equal (irc:nickname (irc:user connection1)) (irc:nickname (irc:user connection2)))
+  (and (equal (and (irc:user connection1)
+                   (irc:nickname (irc:user connection1)))
+              (and (irc:user connection2)
+                   (irc:nickname (irc:user connection2))))
        (equal (irc:server-name connection1) (irc:server-name connection2))))
 
 (define-beirc-command (com-connect :name t)
@@ -970,22 +987,26 @@ not away."
                                     (prog1 maybe-server-receiver
                                            (reinit-receiver-for-new-connection maybe-server-receiver
                                                                                connection))
-                                    (intern-receiver (format nil "~A on ~A:~A" nick server port) connection frame))))
+                                    (intern-receiver (format nil "~A on ~A:~A" nick server port) connection frame)))
+               (termio *terminal-io*))
           (unwind-protect
               (progn
                 (setf (irc:client-stream connection) (make-broadcast-stream))
-                (when (sheet-to-page (find-pane-named frame 'server))
-                  (remove-page (sheet-to-page (find-pane-named frame 'server))))
+                (let* ((server-pane (find-pane-named frame 'server))
+                       (server-page (and server-pane (sheet-to-page server-pane))))
+                  (when server-page
+                    (remove-page server-page)))
                 (setf (server-receiver frame connection) server-receiver)
                 (setf (ui-process *application-frame*) (current-process))
                 (if (processes-supported-p)
                     (setf (connection-process *application-frame* connection)
                           (clim-sys:make-process #'(lambda ()
-                                                     (restart-case
-                                                         (irc-event-loop frame connection)
-                                                       (disconnect ()
-                                                         :report "Terminate this connection"
-                                                         (disconnect connection frame "Client Disconnect"))))
+                                                     (let ((*terminal-io* termio))
+                                                       (restart-case
+                                                           (irc-event-loop frame connection)
+                                                         (disconnect ()
+                                                           :report "Terminate this connection"
+                                                           (disconnect connection frame "Client Disconnect")))))
                                                  :name "IRC Message Muffling Loop"))
                     (irc:start-background-message-handler connection))
                 (setf success t)

@@ -6,7 +6,7 @@
 (cl:in-package :beirc.system)
 
 (defsystem :beirc
-  :depends-on (:mcclim :cl-irc :split-sequence :cl-ppcre :cl-fad)
+  :depends-on (:mcclim :cl-irc :split-sequence :cl-ppcre #+(or sbcl allegro) :cl-fad)
   :components ((:file "package")
                (:file "variables" :depends-on ("package"))
                (:file "events" :depends-on ("package"))
